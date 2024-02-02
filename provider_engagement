@@ -1,5 +1,8 @@
+drop view if exists analytics.vw_INTL_Provider_Engagement;
+create view analytics.vw_INTL_Provider_Engagement as 
+
 select 
-  date, Current_Date_SameDay, vertical, channel, membership_status, activity_date, country_code,
+  date, Current_Date_SameDay, vertical, channel, membership_status, activity_date, isStale, country_code,
   sum(signups) as signups,
   sum(active_accounts) as active_accounts,
   sum(active_accounts) over (partition by vertical, channel, membership_status, activity_date, country_code order by date range between interval '30' day preceding and current row) as 'active_accounts_30days'
@@ -15,6 +18,7 @@ from
     mm.channel,   
     case when up.memberid is not null then 'Premium' else 'Basic' end as membership_status,
     case when date(mm.dateMemberSignup) = aa.date then 'Same_Day_Signup' else 'After_Signup' end as activity_date,
+    mm.isStale,
     upper(mm.countrycode) as country_code,   
     count(distinct mm.memberid) as signups,
     count(distinct aa.memberid) as active_accounts
@@ -49,7 +53,13 @@ from
     and dd.date < date(current_date)
     and mm.loginCount > 0
     and date(mm.lastLoginDate) > date(mm.dateMemberSignup)
-  group by 1,2,3,4,5,6,7
+  group by 1,2,3,4,5,6,7,8
 ) ab
 
-group by 1,2,3,4,5,6,7,active_accounts
+group by 1,2,3,4,5,6,7,8,active_accounts
+
+---
+;
+grant select on analytics.vw_INTL_Provider_Engagement to reporting_ro, analytics_team;
+;
+select * from analytics.vw_INTL_Active_Providers where year(date) = 2023 limit 100
