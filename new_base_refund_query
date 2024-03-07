@@ -1,0 +1,65 @@
+select distinct fpd.countrycode, fpd.memberid, fpd.subscriptionDateCreated, lpd.subscriptionid, lpd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate
+from
+(select countrycode, memberid, subscriptionDateCreated, firstPaymentDate from
+  (select countrycode, memberid, subscriptionDateCreated, firstPaymentDate, rank() over (partition by memberid order by firstPaymentDate asc) as ranked_firstPaymentDate
+      from
+      (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, sp.firstPaymentDate
+      from intl.transaction tt
+      join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
+      left join (select distinct sp.countrycode, sp.memberid
+                  from intl.transaction tt
+                  join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
+                  where tt.type in ('PriorAuthCapture','AuthAndCapture')
+                    and tt.status = 'SUCCESS'
+                    and tt.amount > 0
+                    and sp.promotionCode = 'canceldowngrade30'
+                    and date(sp.subscriptionDateCreated) >= '2022-03-01'
+                    and date(sp.subscriptionDateCreated) < date(current_date)
+                    and sp.countrycode not in ('uk','ca','au','nz','ch')
+                    and sp.pricePlanDurationInMonths <> 1 
+                  group by 1,2) ab on sp.memberid = ab.memberid and sp.countrycode = ab.countrycode       
+      where tt.type in ('PriorAuthCapture','AuthAndCapture') 
+        and tt.status = 'SUCCESS'
+        and tt.amount > 0
+        and date(sp.subscriptionDateCreated) >= '2022-03-01'
+        and date(sp.subscriptionDateCreated) < date(current_date)
+        and sp.countrycode not in ('uk','ca','au','nz','ch')
+        and sp.pricePlanDurationInMonths <> 1
+      group by 1,2,3,4) ab
+      where memberid is not null) cd
+      where ranked_firstPaymentDate = 1
+      group by 1,2,3,4) fpd
+join 
+(select countrycode, memberid, nextPaymentDate, billed_service_start_date, subscriptionid, nextPaymentDateAction from
+  (select countrycode, memberid, nextPaymentDate, billed_service_start_date, subscriptionid, nextPaymentDateAction, 
+          rank() over (partition by memberid order by billed_service_start_date desc) as ranked_bill_date
+      from
+      (select distinct ab.countrycode, ab.memberid, tt.billed_service_start_date, 
+                       sp.subscriptionid, sp.nextPaymentDateAction, sp.nextPaymentDate
+      from intl.transaction tt
+      join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
+      left join (select distinct sp.countrycode, sp.memberid
+                  from intl.transaction tt
+                  join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
+                  where tt.type in ('PriorAuthCapture','AuthAndCapture')
+                    and tt.status = 'SUCCESS'
+                    and tt.amount > 0
+                    and sp.promotionCode = 'canceldowngrade30'
+                    and date(sp.subscriptionDateCreated) >= '2022-03-01'
+                    and date(sp.subscriptionDateCreated) < date(current_date)
+                    and sp.countrycode not in ('uk','ca','au','nz','ch')
+                    and sp.pricePlanDurationInMonths <> 1 
+                    and sp.nextPaymentDateAction = 'Downgrade'
+                  group by 1,2) ab on sp.memberid = ab.memberid and sp.countrycode = ab.countrycode       
+      where tt.type in ('PriorAuthCapture','AuthAndCapture') 
+        and tt.status = 'SUCCESS'
+        and tt.amount > 0
+        and date(sp.subscriptionDateCreated) >= '2022-03-01'
+        and date(sp.subscriptionDateCreated) < date(current_date)
+        and sp.countrycode not in ('uk','ca','au','nz','ch')
+        and sp.pricePlanDurationInMonths <> 1
+        and sp.nextPaymentDateAction = 'Downgrade'
+      group by 1,2,3,4,5,6) ab
+      where memberid is not null) cd
+      where ranked_bill_date = 1
+      group by 1,2,3,4,5,6) lpd on fpd.countrycode = lpd.countrycode and fpd.memberid = lpd.memberid
