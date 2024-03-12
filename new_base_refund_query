@@ -1,4 +1,11 @@
-select distinct fpd.countrycode, fpd.memberid, fpd.subscriptionDateCreated, lpd.subscriptionid, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate
+--billed_service_start_date = AuthAndCapture transaction of last subscription plan
+--subscription id = last one
+--firstPaymentDateAction = first one
+--nextPaymentDateAction = last one
+--sp.subscriptionDateCreated = first one
+
+
+select fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate
 from
 (select countrycode, memberid, subscriptionDateCreated, firstPaymentDate from
   (select countrycode, memberid, subscriptionDateCreated, firstPaymentDate, rank() over (partition by memberid order by firstPaymentDate asc) as ranked_firstPaymentDate
@@ -13,6 +20,7 @@ from
                     and tt.status = 'SUCCESS'
                     and tt.amount > 0
                     and sp.promotionCode = 'canceldowngrade30'
+                    and sp.nextPaymentDateAction = 'Downgrade'
                     and date(sp.subscriptionDateCreated) >= '2022-03-01'
                     and date(sp.subscriptionDateCreated) < date(current_date)
                     and sp.countrycode not in ('uk','ca','au','nz','ch')
@@ -25,6 +33,7 @@ from
         and date(sp.subscriptionDateCreated) < date(current_date)
         and sp.countrycode not in ('uk','ca','au','nz','ch')
         and sp.pricePlanDurationInMonths <> 1
+        and sp.nextPaymentDateAction = 'Downgrade'
       group by 1,2,3,4) ab
       where memberid is not null) cd
       where ranked_firstPaymentDate = 1
@@ -42,8 +51,7 @@ join
         and date(sp.subscriptionDateCreated) >= '2022-03-01'
         and date(sp.subscriptionDateCreated) < date(current_date)
         and sp.countrycode not in ('uk','ca','au','nz','ch')
-        and sp.pricePlanDurationInMonths <> 1
-        and sp.nextPaymentDateAction = 'Downgrade') ef
+        and sp.pricePlanDurationInMonths <> 1) ef
        ) gh
       where ranked_nextPaymentDate = 1  
       group by 1,2,3,4) lpd on fpd.countrycode = lpd.countrycode and fpd.memberid = lpd.memberid
