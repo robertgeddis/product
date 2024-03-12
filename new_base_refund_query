@@ -1,16 +1,18 @@
---billed_service_start_date = AuthAndCapture transaction of last subscription plan
---subscription id = last one
---firstPaymentDateAction = first one
---nextPaymentDateAction = last one
---sp.subscriptionDateCreated = first one
-
-
-select fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate
+/*
+billed_service_start_date = Lastest one on a AuthAndCapture transaction 
+subscription id = Lastest one
+firstPaymentDateAction = First one
+nextPaymentDateAction = Latest one
+sp.subscriptionDateCreated = First one
+*/
+ 
+select fpd.countrycode, fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate, fpd.pricePlanDurationInMonths, fpd.pricePlanFee
 from
-(select countrycode, memberid, subscriptionDateCreated, firstPaymentDate from
-  (select countrycode, memberid, subscriptionDateCreated, firstPaymentDate, rank() over (partition by memberid order by firstPaymentDate asc) as ranked_firstPaymentDate
+(select countrycode, memberid, subscriptionDateCreated, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths from
+  (select countrycode, memberid, subscriptionDateCreated, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths,
+          rank() over (partition by memberid order by firstPaymentDate,subscriptionDateCreated asc) as ranked_firstPaymentDate
       from
-      (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, sp.firstPaymentDate
+      (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, sp.firstPaymentDate, (ab.pricePlanFee*0.7) as pricePlanFee, ab.pricePlanDurationInMonths
       from intl.transaction tt
       join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
       left join (select distinct sp.countrycode, sp.memberid
@@ -33,11 +35,10 @@ from
         and date(sp.subscriptionDateCreated) < date(current_date)
         and sp.countrycode not in ('uk','ca','au','nz','ch')
         and sp.pricePlanDurationInMonths <> 1
-        and sp.nextPaymentDateAction = 'Downgrade'
-      group by 1,2,3,4) ab
+      group by 1,2,3,4,5,6) ab
       where memberid is not null) cd
       where ranked_firstPaymentDate = 1
-      group by 1,2,3,4) fpd
+      group by 1,2,3,4,5,6) fpd
 join 
 (select countrycode, memberid, nextPaymentDate, subscriptionid from
   (select countrycode, memberid, nextPaymentDate, subscriptionid, rank() over (partition by memberid order by nextPaymentDate desc) as ranked_nextPaymentDate
