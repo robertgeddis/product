@@ -1,11 +1,3 @@
-/*
-billed_service_start_date = Lastest one on a AuthAndCapture transaction 
-subscription id = Lastest one
-firstPaymentDateAction = First one
-nextPaymentDateAction = Latest one
-sp.subscriptionDateCreated = First one
-*/
- 
 select fpd.countrycode, fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate, fpd.pricePlanDurationInMonths, fpd.pricePlanFee
 from
 (select countrycode, memberid, subscriptionDateCreated, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths from
@@ -15,7 +7,7 @@ from
       (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, sp.firstPaymentDate, (ab.pricePlanFee*0.7) as pricePlanFee, ab.pricePlanDurationInMonths
       from intl.transaction tt
       join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
-      left join (select distinct sp.countrycode, sp.memberid
+      left join (select distinct sp.countrycode, sp.memberid, sp.pricePlanFee, sp.pricePlanDurationInMonths
                   from intl.transaction tt
                   join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
                   where tt.type in ('PriorAuthCapture','AuthAndCapture')
@@ -27,7 +19,7 @@ from
                     and date(sp.subscriptionDateCreated) < date(current_date)
                     and sp.countrycode not in ('uk','ca','au','nz','ch')
                     and sp.pricePlanDurationInMonths <> 1 
-                  group by 1,2) ab on sp.memberid = ab.memberid and sp.countrycode = ab.countrycode       
+                  group by 1,2,3,4) ab on sp.memberid = ab.memberid and sp.countrycode = ab.countrycode       
       where tt.type in ('PriorAuthCapture','AuthAndCapture') 
         and tt.status = 'SUCCESS'
         and tt.amount > 0
