@@ -22,78 +22,76 @@ select
   else 'No' end as 'Refunded ?'  
   
 from 
-(select fpd.countrycode, fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, fpd.transaction_date, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate, fpd.pricePlanDurationInMonths, fpd.pricePlanFee
-    from
-    (select countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths from
-      (select countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths,
-              rank() over (partition by memberid order by firstPaymentDate,subscriptionDateCreated asc) as ranked_firstPaymentDate
-          from
-          (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, ab.transaction_date, sp.firstPaymentDate, (ab.pricePlanFee*0.7) as pricePlanFee, ab.pricePlanDurationInMonths
-          from intl.transaction tt
-          join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
-          left join (select countrycode, memberid, pricePlanFee, pricePlanDurationInMonths, transaction_date, type from   
-                        (select distinct sp.countrycode, sp.memberid, sp.pricePlanFee, sp.pricePlanDurationInMonths, tt.date_created as transaction_date, tt.type,
-                                 rank() over (partition by sp.memberid order by tt.date_created desc) as ranked_transaction_date
-                          from intl.transaction tt
-                          join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
-                          where tt.type in ('PriorAuthCapture','AuthAndCapture')
-                            and tt.status = 'SUCCESS'
-                            and tt.amount > 0
-                            and sp.promotionCode = 'canceldowngrade30'
-                            and sp.nextPaymentDateAction = 'Downgrade'
-                            and date(sp.subscriptionDateCreated) >= '2022-03-01'
-                            and date(sp.subscriptionDateCreated) < date(current_date)
-                            and sp.countrycode not in ('uk','ca','au','nz','ch')
-                            and sp.pricePlanDurationInMonths <> 1 
-                          group by 1,2,3,4,5,6) zx
-                         where ranked_transaction_date = 1) ab on sp.memberid = ab.memberid and sp.countrycode = ab.countrycode       
-          where tt.type in ('PriorAuthCapture','AuthAndCapture') 
-            and tt.status = 'SUCCESS'
-            and tt.amount > 0
-            and date(sp.subscriptionDateCreated) >= '2022-03-01'
-            and date(sp.subscriptionDateCreated) < date(current_date)
-            and sp.countrycode not in ('uk','ca','au','nz','ch')
-            and sp.pricePlanDurationInMonths <> 1
-          group by 1,2,3,4,5,6,7) ab
-          where memberid is not null) cd
-          where ranked_firstPaymentDate = 1
-          group by 1,2,3,4,5,6,7) fpd
-    join 
-    (select countrycode, memberid, nextPaymentDate, subscriptionid from
-      (select countrycode, memberid, nextPaymentDate, subscriptionid, rank() over (partition by memberid order by nextPaymentDate desc) as ranked_nextPaymentDate
-          from
-          (select distinct sp.countrycode, sp.memberid, sp.subscriptionid, sp.nextPaymentDate
-          from intl.transaction tt
-          join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid 
-          where tt.type in ('PriorAuthCapture','AuthAndCapture') 
-            and tt.status = 'SUCCESS'
-            and tt.amount > 0
-            and date(sp.subscriptionDateCreated) >= '2022-03-01'
-            and date(sp.subscriptionDateCreated) < date(current_date)
-            and sp.countrycode not in ('uk','ca','au','nz','ch')
-            and sp.pricePlanDurationInMonths <> 1) ef
-           ) gh
-          where ranked_nextPaymentDate = 1 
-          group by 1,2,3,4) lpd on fpd.countrycode = lpd.countrycode and fpd.memberid = lpd.memberid
-    join 
-    (select countrycode, memberid, billed_service_start_date from
-      (select countrycode, memberid, billed_service_start_date, rank() over (partition by memberid order by billed_service_start_date desc) as ranked_billed_service_start_date
-          from
-          (select distinct sp.countrycode, sp.memberid, tt.billed_service_start_date
-          from intl.transaction tt
-          join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid 
-          where tt.type = 'AuthAndCapture' 
-            and tt.status = 'SUCCESS'
-            and tt.amount > 0
-            and date(sp.subscriptionDateCreated) >= '2022-03-01'
-            and date(sp.subscriptionDateCreated) < date(current_date)
-            and sp.countrycode not in ('uk','ca','au','nz','ch')
-            and sp.pricePlanDurationInMonths <> 1
-          group by 1,2,3) ij
-          ) kl
-          where ranked_billed_service_start_date = 1
-          group by 1,2,3) lbsd on lbsd.countrycode = lpd.countrycode and lbsd.memberid = lpd.memberid
-) base 
+          (
+              select fpd.countrycode, fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, fpd.transaction_date, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate, fpd.pricePlanDurationInMonths, fpd.pricePlanFee
+              from
+              (select countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths from
+                (select countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths,
+                        rank() over (partition by memberid order by firstPaymentDate,subscriptionDateCreated asc) as ranked_firstPaymentDate
+                    from
+                    (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, ab.date_created as transaction_date, sp.firstPaymentDate, (ab.pricePlanFee*0.7) as pricePlanFee, ab.pricePlanDurationInMonths
+                    from intl.transaction tt
+                    join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
+                    left join (select distinct sp.countrycode, sp.memberid, sp.pricePlanFee, sp.pricePlanDurationInMonths, tt.date_created
+                                from intl.transaction tt
+                                join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
+                                where tt.type in ('PriorAuthCapture','AuthAndCapture')
+                                  and tt.status = 'SUCCESS'
+                                  and tt.amount > 0
+                                  and sp.promotionCode = 'canceldowngrade30'
+                                  and sp.nextPaymentDateAction = 'Downgrade'
+                                  and date(sp.subscriptionDateCreated) >= '2022-03-01'
+                                  and date(sp.subscriptionDateCreated) < date(current_date)
+                                  and sp.countrycode not in ('uk','ca','au','nz','ch')
+                                  and sp.pricePlanDurationInMonths <> 1 
+                                group by 1,2,3,4,5) ab on sp.memberid = ab.memberid and sp.countrycode = ab.countrycode       
+                    where tt.type in ('PriorAuthCapture','AuthAndCapture') 
+                      and tt.status = 'SUCCESS'
+                      and tt.amount > 0
+                      and date(sp.subscriptionDateCreated) >= '2022-03-01'
+                      and date(sp.subscriptionDateCreated) < date(current_date)
+                      and sp.countrycode not in ('uk','ca','au','nz','ch')
+                      and sp.pricePlanDurationInMonths <> 1
+                    group by 1,2,3,4,5,6,7) ab
+                    where memberid is not null) cd
+                    where ranked_firstPaymentDate = 1
+                    group by 1,2,3,4,5,6,7) fpd
+              join 
+              (select countrycode, memberid, nextPaymentDate, subscriptionid from
+                (select countrycode, memberid, nextPaymentDate, subscriptionid, rank() over (partition by memberid order by nextPaymentDate desc) as ranked_nextPaymentDate
+                    from
+                    (select distinct sp.countrycode, sp.memberid, sp.subscriptionid, sp.nextPaymentDate
+                    from intl.transaction tt
+                    join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid 
+                    where tt.type in ('PriorAuthCapture','AuthAndCapture') 
+                      and tt.status = 'SUCCESS'
+                      and tt.amount > 0
+                      and date(sp.subscriptionDateCreated) >= '2022-03-01'
+                      and date(sp.subscriptionDateCreated) < date(current_date)
+                      and sp.countrycode not in ('uk','ca','au','nz','ch')
+                      and sp.pricePlanDurationInMonths <> 1) ef
+                     ) gh
+                    where ranked_nextPaymentDate = 1  
+                    group by 1,2,3,4) lpd on fpd.countrycode = lpd.countrycode and fpd.memberid = lpd.memberid
+              join 
+              (select countrycode, memberid, billed_service_start_date from
+                (select countrycode, memberid, billed_service_start_date, rank() over (partition by memberid order by billed_service_start_date desc) as ranked_billed_service_start_date
+                    from
+                    (select distinct sp.countrycode, sp.memberid, tt.billed_service_start_date
+                    from intl.transaction tt
+                    join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid 
+                    where tt.type = 'AuthAndCapture' 
+                      and tt.status = 'SUCCESS'
+                      and tt.amount > 0
+                      and date(sp.subscriptionDateCreated) >= '2022-03-01'
+                      and date(sp.subscriptionDateCreated) < date(current_date)
+                      and sp.countrycode not in ('uk','ca','au','nz','ch')
+                      and sp.pricePlanDurationInMonths <> 1
+                    group by 1,2,3) ij
+                    ) kl
+                    where ranked_billed_service_start_date = 1
+                    group by 1,2,3) lbsd on lbsd.countrycode = lpd.countrycode and lbsd.memberid = lpd.memberid
+          ) base 
           
   join intl.hive_member m                    on base.memberid = m.memberid 
                                             and base.countrycode = m.countrycode 
@@ -102,8 +100,8 @@ from
                                             and m.countrycode not in ('uk','ca','au','nz','ch') --- These countries are not legally registered in Germany 
                                             and m.memberStatus = 'Premium' --- Only looking at current premiums 
                                             
-  join intl.hive_event dg                    on dg.memberid = base.memberid
-                                            and dg.countrycode = base.countrycode
+  join intl.hive_event dg                    on dg.memberid = m.memberid
+                                            and dg.countrycode = m.countrycode
                                             and dg.name = 'AccountActionRequest' --- When the downgrade was requested
                                             and dg.accountaction = 'Downgrade'
                                             and dg.actionOccursOn <> 'Now'  --- Only downgrades schedulled to occur at the end of premium period and did not happen immediately
@@ -119,7 +117,7 @@ from
                                             and r.subscription_plan_id = base.subscriptionid                                           
 
   left join intl.transaction cb              on cb.member_id = base.memberid
-                                            and cb.country_code = base.countrycode
+                                            and cb.country_code = subscriptionid.countrycode
                                             and cb.date_created > base.transaction_date
                                             and cb.type = 'Chargeback' 
                                             and cb.amount > 0 
@@ -128,6 +126,6 @@ from
                                             
 where 1
   and datediff(day,date(dg.dateCreated),date(base.nextPaymentdate)) > 30  --- Must be more than 30 days left from requesting downgrade until the next payment date be eligiable for refund
-  and datediff(day,date(base.firstPaymentDate),date(base.nextPaymentDate)) > datediff(day,date(base.billed_service_start_date),date(base.nextPaymentdate)) --- Excludes the first transaction if multiple auto-renews have occurred (difference in days would be the same on the first transaction)
+  and datediff(day,date(base.firstPaymentDate),date(base.nextPaymentDate)) > datediff(day,date(base.billed_service_start_date),date(base.nextPaymentdate)) --- Excludes the first transaction if multiple auto-renews have occurred (difference in days would be the same on the first transaction
   and m.memberid not in ('13508844','13570449','13461507','13657390','13516952') --- 13508844 removed on 22.07.2022. 13570449 on 27.07.2022. 13461507 on 09.08.2022. 13657390 on 10.08.2022. 13516952 on 12.08.2022. As requested from Christina P
   and cb.member_id is null -- Added 15.08.2022 to exclude those with ChargeBack
