@@ -73,7 +73,7 @@ from
             and sp.countrycode not in ('uk','ca','au','nz','ch')
             and sp.pricePlanDurationInMonths <> 1) ef
            ) gh
-          where ranked_nextPaymentDate = 1  
+          where ranked_nextPaymentDate = 1 
           group by 1,2,3,4) lpd on fpd.countrycode = lpd.countrycode and fpd.memberid = lpd.memberid
     join 
     (select countrycode, memberid, billed_service_start_date from
