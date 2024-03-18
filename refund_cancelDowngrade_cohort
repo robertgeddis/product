@@ -1,4 +1,4 @@
-select 
+select distinct
   upper(m.countrycode) as Country,
   base.memberid as MemberID,
   date(base.subscriptionDateCreated) as 'Upgrade Date',
@@ -23,10 +23,10 @@ select
   
 from 
           (
-              select fpd.countrycode, fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, fpd.transaction_date, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate, fpd.pricePlanDurationInMonths, fpd.pricePlanFee
+              select distinct fpd.countrycode, fpd.memberid, lpd.subscriptionid, fpd.subscriptionDateCreated, fpd.transaction_date, lbsd.billed_service_start_date, fpd.firstPaymentDate, lpd.nextPaymentDate, fpd.pricePlanDurationInMonths, fpd.pricePlanFee
               from
-              (select countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths from
-                (select countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths,
+              (select distinct countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths from
+                (select distinct countrycode, memberid, subscriptionDateCreated, transaction_date, firstPaymentDate, pricePlanFee, pricePlanDurationInMonths,
                         rank() over (partition by memberid order by firstPaymentDate,subscriptionDateCreated asc) as ranked_firstPaymentDate
                     from
                     (select distinct ab.countrycode, ab.memberid, sp.subscriptionDateCreated, ab.date_created as transaction_date, sp.firstPaymentDate, (ab.pricePlanFee*0.7) as pricePlanFee, ab.pricePlanDurationInMonths
@@ -57,8 +57,8 @@ from
                     where ranked_firstPaymentDate = 1
                     group by 1,2,3,4,5,6,7) fpd
               join 
-              (select countrycode, memberid, nextPaymentDate, subscriptionid from
-                (select countrycode, memberid, nextPaymentDate, subscriptionid, rank() over (partition by memberid order by nextPaymentDate desc) as ranked_nextPaymentDate
+              (select distinct countrycode, memberid, nextPaymentDate, subscriptionid from
+                (select distinct countrycode, memberid, nextPaymentDate, subscriptionid, rank() over (partition by memberid order by nextPaymentDate desc) as ranked_nextPaymentDate
                     from
                     (select distinct sp.countrycode, sp.memberid, sp.subscriptionid, sp.nextPaymentDate
                     from intl.transaction tt
@@ -74,8 +74,8 @@ from
                     where ranked_nextPaymentDate = 1  
                     group by 1,2,3,4) lpd on fpd.countrycode = lpd.countrycode and fpd.memberid = lpd.memberid
               join 
-              (select countrycode, memberid, billed_service_start_date from
-                (select countrycode, memberid, billed_service_start_date, rank() over (partition by memberid order by billed_service_start_date desc) as ranked_billed_service_start_date
+              (select distinct countrycode, memberid, billed_service_start_date from
+                (select distinct countrycode, memberid, billed_service_start_date, rank() over (partition by memberid order by billed_service_start_date desc) as ranked_billed_service_start_date
                     from
                     (select distinct sp.countrycode, sp.memberid, tt.billed_service_start_date
                     from intl.transaction tt
@@ -100,8 +100,8 @@ from
                                             and m.countrycode not in ('uk','ca','au','nz','ch') --- These countries are not legally registered in Germany 
                                             and m.memberStatus = 'Premium' --- Only looking at current premiums 
                                             
-  join intl.hive_event dg                    on dg.memberid = m.memberid
-                                            and dg.countrycode = m.countrycode
+  join intl.hive_event dg                    on dg.memberid = base.memberid
+                                            and dg.countrycode = base.countrycode
                                             and dg.name = 'AccountActionRequest' --- When the downgrade was requested
                                             and dg.accountaction = 'Downgrade'
                                             and dg.actionOccursOn <> 'Now'  --- Only downgrades schedulled to occur at the end of premium period and did not happen immediately
@@ -117,7 +117,7 @@ from
                                             and r.subscription_plan_id = base.subscriptionid                                           
 
   left join intl.transaction cb              on cb.member_id = base.memberid
-                                            and cb.country_code = subscriptionid.countrycode
+                                            and cb.country_code = base.countrycode
                                             and cb.date_created > base.transaction_date
                                             and cb.type = 'Chargeback' 
                                             and cb.amount > 0 
