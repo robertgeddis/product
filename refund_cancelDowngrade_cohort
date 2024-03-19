@@ -19,7 +19,8 @@ join (select billed_service_start_date, memberid, subscriptionid, countrycode, s
                       pricePlanDurationInMonths, pricePlanFee, discounted_fee,
                       rank() over (partition by memberid order by billed_service_start_date desc) as ranked_bill_date
                 from (select distinct   
-                        case when tt.type = 'AuthAndCapture' then tt.billed_service_start_date else null end as billed_service_start_date, 
+                        --case when tt.type = 'AuthAndCapture' then tt.billed_service_start_date else null end as billed_service_start_date,
+                        tt.billed_service_start_date, 
                         sp.memberid, 
                         sp.subscriptionid, 
                         sp.countrycode, 
