@@ -53,4 +53,3 @@ where tt.type in ('PriorAuthCapture','AuthAndCapture')
 group by 1,2,3,4,5,6,7,8,9
 ) comb
 where ranked_transaction_date = 1
---and memberid = '3811141'
