@@ -1,15 +1,19 @@
-select 
-  tt.date_created as transaction_date,
+select memberid, pricePlanFee, discounted_fee, billed_service_start_date, subscriptionid, subscriptionDateCreated, transaction_date, firstPaymentDate, nextPaymentDate
+from
+(select 
+  sp.memberid,
   dn.pricePlanFee, 
   dn.discounted_fee,
   dn.billed_service_start_date,    
   dn.subscriptionid, 
+  tt.date_created as transaction_date,
   sp.subscriptionDateCreated,   
   sp.firstPaymentDate, 
-  dn.nextPaymentDate 
+  dn.nextPaymentDate,
+  rank () over (partition by sp.memberid order by tt.date_created asc) as ranked_transaction_date 
 from intl.transaction tt
 join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
-left join (select billed_service_start_date, memberid, subscriptionid, countrycode, subscriptionDateCreated, nextPaymentDate, pricePlanDurationInMonths, pricePlanFee, discounted_fee
+join (select billed_service_start_date, memberid, subscriptionid, countrycode, subscriptionDateCreated, nextPaymentDate, pricePlanDurationInMonths, pricePlanFee, discounted_fee
             from
               (select billed_service_start_date, memberid, subscriptionid, countrycode, subscriptionDateCreated, nextPaymentDate, 
                       pricePlanDurationInMonths, pricePlanFee, discounted_fee,
@@ -46,3 +50,7 @@ where tt.type in ('PriorAuthCapture','AuthAndCapture')
   and sp.countrycode not in ('uk','ca','au','nz','ch')
   and sp.pricePlanDurationInMonths <> 1
   and sp.nextPaymentDateAction = 'ApplyPromotion'
+group by 1,2,3,4,5,6,7,8,9
+) comb
+where ranked_transaction_date = 1
+--and memberid = '3811141'
