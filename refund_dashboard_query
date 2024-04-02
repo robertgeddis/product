@@ -1,6 +1,7 @@
 select 
   upper(m.countrycode) as Country,
   sp.memberid as MemberID,
+  t.transaction_id,
   date(sp.subscriptionDateCreated) as 'Upgrade Date',
   date(dg.datecreated) as 'Downgrade Requested Date',
   date(sp.nextPaymentdate) as 'Next Payment Date',
@@ -17,22 +18,23 @@ select
   (cast(sp.pricePlanFee as numeric)/cast(datediff(day,date(t.billed_service_start_date),date(sp.nextPaymentdate)) as numeric))*
   (cast(datediff(day,date(dg.dateCreated),date(sp.nextPaymentdate))-30 as numeric)) as 'Refund Amount', --- Mulitples 'Days to Refund' by 'Daily Rate' for the sum to be refunded
   
-  case when r.member_id is not null then 'Yes' --- Identifies members who have been refunded
+  case when r.member_id is not null and r.status = 'SUCCESS' then 'Yes' --- Identifies members who have been refunded
+       when r.member_id is not null and r.status = 'FAILURE' then 'Failed' 
        when m.memberid in ('13395735','12073721') then 'Yes'  --- Refunds already done but not shown up e.g. chargebacks etc 
-  else 'No' end as 'Refunded ?'  
+  else 'No' end as 'Refunded'  
   
     
-from  (select distinct date_created, billed_service_start_date, subscription_plan_id, country_code, member_id
+from  (select distinct date_created, billed_service_start_date, subscription_plan_id, transaction_id, country_code, member_id
       from
-        (select distinct date_created, billed_service_start_date, subscription_plan_id, country_code, member_id,
+        (select distinct date_created, billed_service_start_date, subscription_plan_id, id as transaction_id, country_code, member_id,
           rank() over (partition by member_id order by date_created desc) as ranked
         from intl.transaction
         where type = 'AuthAndCapture'
           and status = 'SUCCESS'
           and amount > 0 
-          group by 1,2,3,4,5) req
+          group by 1,2,3,4,5,6) req
             where ranked=1
-            group by 1,2,3,4,5) t
+            group by 1,2,3,4,5,6) t
                                             
   join intl.hive_subscription_plan sp       on sp.subscriptionId = t.subscription_plan_id 
                                             and sp.countrycode = t.country_code                                      
@@ -57,8 +59,9 @@ from  (select distinct date_created, billed_service_start_date, subscription_pla
                                             and r.date_created > t.date_created
                                             and r.type = 'Credit' --- This is the refund action
                                             and r.amount > 0 
-                                            and r.status = 'SUCCESS'
-                                            and r.subscription_plan_id = t.subscription_plan_id                                            
+                                            --and r.status = 'SUCCESS'
+                                            and case when date(r.date_created) >= '2024-03-28' then r.id = t.transaction_id
+                                                else r.subscription_plan_id = t.subscription_plan_id end                                           
 
   left join intl.transaction cb              on cb.member_id = t.member_id
                                             and cb.country_code = t.country_code
@@ -66,7 +69,8 @@ from  (select distinct date_created, billed_service_start_date, subscription_pla
                                             and cb.type = 'Chargeback' 
                                             and cb.amount > 0 
                                             and cb.status = 'SUCCESS'
-                                            and cb.subscription_plan_id = t.subscription_plan_id
+                                            and case when date(cb.date_created) >= '2024-03-28' then cb.id = t.transaction_id
+                                                else cb.subscription_plan_id = t.subscription_plan_id end
                                             
 where date(sp.subscriptionDateCreated) >= '2022-03-01'  --- Legal changes to German law covers those upgrading after this date
   and sp.nextPaymentDateAction = 'Downgrade'  --- Only including those who've requested a downgrade
@@ -121,6 +125,7 @@ union
 select 
   upper(comb.countrycode) as Country,
   comb.memberid as MemberID,
+  comb.transaction_id,
   date(comb.subscriptionDateCreated) as 'Upgrade Date',
   date(dg.datecreated) as 'Downgrade Requested Date',
   date(comb.nextPaymentdate) as 'Next Payment Date',
@@ -137,12 +142,21 @@ select
   (cast(comb.discounted_fee as numeric)/cast(datediff(day,date(comb.billed_service_start_date),date(comb.nextPaymentdate)) as numeric))*
   (cast(datediff(day,date(dg.dateCreated),date(comb.nextPaymentdate))-30 as numeric)) as 'Refund Amount', --- Mulitples 'Days to Refund' by 'Daily Rate' for the sum to be refunded
   
-  case when r.member_id is not null then 'Yes' --- Identifies members who have been refunded
+  case when r.member_id is not null and r.status = 'SUCCESS' then 'Yes' --- Identifies members who have been refunded
+       when r.member_id is not null and r.status = 'FAILURE' then 'Failed' 
        when m.memberid in ('13395735','12073721') then 'Yes'  --- Refunds already done but not shown up e.g. chargebacks etc 
-  else 'No' end as 'Refunded ?'  
+       when m.memberid = '10715196' and comb.transaction_id = '8579377' then 'Yes'
+       when m.memberid = '14263862' and comb.transaction_id = '8462052' then 'Yes'
+       when m.memberid = '7867010' and comb.transaction_id = '9430561' then 'Yes'
+       when m.memberid = '10673369' and comb.transaction_id = '9262461' then 'Yes'
+       when m.memberid = '13013147' and comb.transaction_id = '9616421' then 'Yes'
+       when m.memberid = '15186687' and comb.transaction_id = '9267301' then 'Yes'
+       when m.memberid = '13946771' and comb.transaction_id = '8859322' then 'Yes'
+       when m.memberid = '13723940' and comb.transaction_id = '8653612' then 'Failed'
+  else 'No' end as 'Refunded'  
   
 from (
-select memberid, countrycode, discounted_fee, pricePlanDurationInMonths, billed_service_start_date, subscriptionid, subscriptionDateCreated, transaction_date, firstPaymentDate, nextPaymentDate
+select memberid, countrycode, discounted_fee, pricePlanDurationInMonths, billed_service_start_date, subscriptionid, transaction_id, subscriptionDateCreated, transaction_date, firstPaymentDate, nextPaymentDate
 from
 (select 
   sp.memberid,
@@ -151,6 +165,7 @@ from
   dn.pricePlanDurationInMonths,
   dn.billed_service_start_date,    
   dn.subscriptionid, 
+  dn.transaction_id,
   tt.date_created as transaction_date,
   sp.subscriptionDateCreated,   
   sp.firstPaymentDate, 
@@ -158,14 +173,15 @@ from
   rank () over (partition by sp.memberid order by tt.date_created asc) as ranked_transaction_date 
 from intl.transaction tt
 join intl.hive_subscription_plan sp on tt.member_id = sp.memberid and tt.country_code = sp.countrycode and tt.subscription_plan_id = sp.subscriptionid
-join (select billed_service_start_date, memberid, subscriptionid, countrycode, subscriptionDateCreated, nextPaymentDate, pricePlanDurationInMonths, discounted_fee
+join (select billed_service_start_date, memberid, subscriptionid, transaction_id, countrycode, subscriptionDateCreated, nextPaymentDate, pricePlanDurationInMonths, discounted_fee
             from
-              (select billed_service_start_date, memberid, subscriptionid, countrycode, subscriptionDateCreated, nextPaymentDate, 
+              (select billed_service_start_date, memberid, subscriptionid, countrycode, subscriptionDateCreated, transaction_id, nextPaymentDate, 
                       pricePlanDurationInMonths, discounted_fee, rank() over (partition by memberid order by billed_service_start_date desc) as ranked_bill_date
                 from (select distinct   
                         tt.billed_service_start_date, 
                         sp.memberid, 
                         sp.subscriptionid, 
+                        tt.id as transaction_id,
                         sp.countrycode, 
                         sp.subscriptionDateCreated, 
                         sp.nextPaymentDate, 
@@ -193,7 +209,7 @@ where tt.type in ('PriorAuthCapture','AuthAndCapture')
   and sp.countrycode not in ('uk','ca','au','nz','ch')
   and sp.pricePlanDurationInMonths <> 1
   and sp.nextPaymentDateAction = 'ApplyPromotion'
-group by 1,2,3,4,5,6,7,8,9,10
+group by 1,2,3,4,5,6,7,8,9,10,11
 ) comb
 where ranked_transaction_date = 1) comb
 
@@ -217,8 +233,9 @@ where ranked_transaction_date = 1) comb
                                             and r.date_created > comb.transaction_date
                                             and r.type = 'Credit' --- This is the refund action
                                             and r.amount > 0 
-                                            and r.status = 'SUCCESS'
-                                            and r.subscription_plan_id = comb.subscriptionid                                            
+                                            --and r.status = 'SUCCESS'
+                                            and case when date(r.date_created) >= '2024-03-28' then r.id = comb.transaction_id
+                                                else r.subscription_plan_id = comb.subscriptionid end                                             
 
   left join intl.transaction cb              on cb.member_id = comb.memberid
                                             and cb.country_code = comb.countrycode
@@ -226,7 +243,8 @@ where ranked_transaction_date = 1) comb
                                             and cb.type = 'Chargeback' 
                                             and cb.amount > 0 
                                             and cb.status = 'SUCCESS'
-                                            and cb.subscription_plan_id = comb.subscriptionid
+                                            and case when date(cb.date_created) >= '2024-03-28' then cb.id = comb.transaction_id 
+                                                 else cb.subscription_plan_id = comb.subscriptionid end 
                                             
 where 1
   and datediff(day,date(dg.dateCreated),date(comb.nextPaymentdate)) > 30  --- Must be more than 30 days left from requesting downgrade until the next payment date be eligiable for refund
