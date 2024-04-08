@@ -21,6 +21,8 @@ select
   case when r.member_id is not null and r.status = 'SUCCESS' then 'Yes' --- Identifies members who have been refunded
        when r.member_id is not null and r.status = 'FAILURE' then 'Failed' 
        when m.memberid in ('13395735','12073721') then 'Yes'  --- Refunds already done but not shown up e.g. chargebacks etc 
+       when m.memberid = '2528045' and t.transaction_id = '9941907' then 'Yes'
+       when m.memberid = '14683500' and t.transaction_id = '9916852' then 'Yes'
   else 'No' end as 'Refunded'  
   
     
@@ -69,8 +71,7 @@ from  (select distinct date_created, billed_service_start_date, subscription_pla
                                             and cb.type = 'Chargeback' 
                                             and cb.amount > 0 
                                             and cb.status = 'SUCCESS'
-                                            and case when date(cb.date_created) >= '2024-03-28' then cb.id = t.transaction_id
-                                                else cb.subscription_plan_id = t.subscription_plan_id end
+                                            and cb.subscription_plan_id = t.subscription_plan_id
                                             
 where date(sp.subscriptionDateCreated) >= '2022-03-01'  --- Legal changes to German law covers those upgrading after this date
   and sp.nextPaymentDateAction = 'Downgrade'  --- Only including those who've requested a downgrade
@@ -243,8 +244,7 @@ where ranked_transaction_date = 1) comb
                                             and cb.type = 'Chargeback' 
                                             and cb.amount > 0 
                                             and cb.status = 'SUCCESS'
-                                            and case when date(cb.date_created) >= '2024-03-28' then cb.id = comb.transaction_id 
-                                                 else cb.subscription_plan_id = comb.subscriptionid end 
+                                            and cb.subscription_plan_id = comb.subscriptionid 
                                             
 where 1
   and datediff(day,date(dg.dateCreated),date(comb.nextPaymentdate)) > 30  --- Must be more than 30 days left from requesting downgrade until the next payment date be eligiable for refund
