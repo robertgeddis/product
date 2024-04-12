@@ -18,11 +18,9 @@ select
   (cast(sp.pricePlanFee as numeric)/cast(datediff(day,date(t.billed_service_start_date),date(sp.nextPaymentdate)) as numeric))*
   (cast(datediff(day,date(dg.dateCreated),date(sp.nextPaymentdate))-30 as numeric)) as 'Refund Amount', --- Mulitples 'Days to Refund' by 'Daily Rate' for the sum to be refunded
   
-  case when r.member_id is not null and r.status = 'SUCCESS' then 'Yes' --- Identifies members who have been refunded
-       when r.member_id is not null and r.status = 'FAILURE' then 'Failed' 
-       when m.memberid in ('13395735','12073721') then 'Yes'  --- Refunds already done but not shown up e.g. chargebacks etc 
-       when m.memberid = '2528045' and t.transaction_id = '9941907' then 'Yes'
-       when m.memberid = '14683500' and t.transaction_id = '9916852' then 'Yes'
+  case when r.member_id = '4031125' and t.transaction_id = '8886953' then 'Yes' 
+       when r.member_id is not null and r.status = 'SUCCESS' then 'Yes' --- Identifies members who have been refunded
+       when r.member_id is not null and r.status = 'FAILURE' then 'Failed'  
   else 'No' end as 'Refunded'  
   
     
@@ -56,15 +54,21 @@ from  (select distinct date_created, billed_service_start_date, subscription_pla
                                             and dg.datecreated >= sp.subscriptionDateCreated
                                             and dg.objectid = sp.subscriptionId
                                             
-  left join intl.transaction r              on r.member_id = t.member_id
-                                            and r.country_code = t.country_code
-                                            and r.date_created > t.date_created
-                                            and r.type = 'Credit' --- This is the refund action
-                                            and r.amount > 0 
-                                            --and r.status = 'SUCCESS'
-                                            and case when date(r.date_created) >= '2024-03-28' then r.id = t.transaction_id
-                                                else r.subscription_plan_id = t.subscription_plan_id end                                           
-
+ left join (select date_created, country_code, member_id, subscription_plan_id, status
+                from
+                (select 
+                  date_created,
+                  country_code,
+                  member_id,
+                  subscription_plan_id,
+                  status,
+                  rank() over (partition by member_id, subscription_plan_id order by date_created desc) as ranked
+                from intl.transaction 
+                where type = 'Credit' 
+                  and amount > 0 ) ab
+                where ranked = 1) r           on r.member_id = t.member_id and r.country_code = t.country_code
+                                              and r.date_created > t.date_created and r.subscription_plan_id = t.subscription_plan_id
+                                             
   left join intl.transaction cb              on cb.member_id = t.member_id
                                             and cb.country_code = t.country_code
                                             and cb.date_created > t.date_created
@@ -78,7 +82,6 @@ where date(sp.subscriptionDateCreated) >= '2022-03-01'  --- Legal changes to Ger
   and sp.pricePlanDurationInMonths <> 1 --- Legal changes only impact users with subscriptions that are longer than a month
   and datediff(day,date(dg.dateCreated),date(sp.nextPaymentdate)) > 30  --- Must be more than 30 days left from requesting downgrade until the next payment date be eligiable for refund
   and datediff(day,date(sp.firstPaymentDate),date(sp.nextPaymentDate)) > datediff(day,date(t.billed_service_start_date),date(sp.nextPaymentdate)) --- Excludes the first transaction if multiple auto-renews have occurred (difference in days would be the same on the first transaction)
-  and m.memberid not in ('13508844','13570449','13461507','13657390','13516952') --- 13508844 removed on 22.07.2022. 13570449 on 27.07.2022. 13461507 on 09.08.2022. 13657390 on 10.08.2022. 13516952 on 12.08.2022. As requested from Christina P
   and cb.member_id is null -- Added 15.08.2022 to exclude those with ChargeBack
   and sp.subscriptionid not in 
       (select distinct dn.subscriptionid
@@ -144,16 +147,13 @@ select
   (cast(datediff(day,date(dg.dateCreated),date(comb.nextPaymentdate))-30 as numeric)) as 'Refund Amount', --- Mulitples 'Days to Refund' by 'Daily Rate' for the sum to be refunded
   
   case when r.member_id is not null and r.status = 'SUCCESS' then 'Yes' --- Identifies members who have been refunded
-       when r.member_id is not null and r.status = 'FAILURE' then 'Failed' 
-       when m.memberid in ('13395735','12073721') then 'Yes'  --- Refunds already done but not shown up e.g. chargebacks etc 
-       when m.memberid = '10715196' and comb.transaction_id = '8579377' then 'Yes'
+       when r.member_id is not null and r.status = 'FAILURE' then 'Failed'
+       when m.memberid = '7867010' and comb.transaction_id = '9430561' then 'Yes' 
        when m.memberid = '14263862' and comb.transaction_id = '8462052' then 'Yes'
-       when m.memberid = '7867010' and comb.transaction_id = '9430561' then 'Yes'
        when m.memberid = '10673369' and comb.transaction_id = '9262461' then 'Yes'
        when m.memberid = '13013147' and comb.transaction_id = '9616421' then 'Yes'
        when m.memberid = '15186687' and comb.transaction_id = '9267301' then 'Yes'
        when m.memberid = '13946771' and comb.transaction_id = '8859322' then 'Yes'
-       when m.memberid = '13723940' and comb.transaction_id = '8653612' then 'Failed'
   else 'No' end as 'Refunded'  
   
 from (
@@ -229,14 +229,20 @@ where ranked_transaction_date = 1) comb
                                             and dg.datecreated >= comb.subscriptionDateCreated
                                             and dg.objectid = comb.subscriptionId
                                             
-  left join intl.transaction r               on r.member_id = comb.memberid
-                                            and r.country_code = comb.countrycode
-                                            and r.date_created > comb.transaction_date
-                                            and r.type = 'Credit' --- This is the refund action
-                                            and r.amount > 0 
-                                            --and r.status = 'SUCCESS'
-                                            and case when date(r.date_created) >= '2024-03-28' then r.id = comb.transaction_id
-                                                else r.subscription_plan_id = comb.subscriptionid end                                             
+  left join (select date_created, country_code, member_id, subscription_plan_id, status
+                  from
+                  (select 
+                    date_created,
+                    country_code,
+                    member_id,
+                    subscription_plan_id,
+                    status,
+                    rank() over (partition by member_id, subscription_plan_id order by date_created desc) as ranked
+                  from intl.transaction 
+                  where type = 'Credit' 
+                    and amount > 0 ) ab
+                  where ranked = 1) r           on r.member_id = comb.memberid and r.country_code = comb.countrycode
+                                                and r.date_created > comb.transaction_date and r.subscription_plan_id = comb.subscriptionid                         
 
   left join intl.transaction cb              on cb.member_id = comb.memberid
                                             and cb.country_code = comb.countrycode
@@ -249,5 +255,4 @@ where ranked_transaction_date = 1) comb
 where 1
   and datediff(day,date(dg.dateCreated),date(comb.nextPaymentdate)) > 30  --- Must be more than 30 days left from requesting downgrade until the next payment date be eligiable for refund
   and datediff(day,date(comb.firstPaymentDate),date(comb.nextPaymentDate)) > datediff(day,date(comb.billed_service_start_date),date(comb.nextPaymentdate)) --- Excludes the first transaction if multiple auto-renews have occurred (difference in days would be the same on the first transaction)
-  and m.memberid not in ('13508844','13570449','13461507','13657390','13516952') --- 13508844 removed on 22.07.2022. 13570449 on 27.07.2022. 13461507 on 09.08.2022. 13657390 on 10.08.2022. 13516952 on 12.08.2022. As requested from Christina P
   and cb.member_id is null -- Added 15.08.2022 to exclude those with ChargeBack
