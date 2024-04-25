@@ -1,0 +1,22 @@
+select distinct
+  year, date, current_date_sameday,
+  country,
+  vertical,
+  app_no,
+  app_type,
+  avg(time_hours_till_app) as avg_time_hours_till_app  
+from
+  (select distinct 
+    dd.year, dd.date, dc.current_date_sameday,
+    jp.country_code as country, jp.vertical_id as vertical,
+    jp.id as job, 
+    rank() over(partition by jp.id order by ja.date_created asc) as app_no,
+    case when ja.was_sent_automatically = 'true' then 'AutoApp' else 'ManualApp' end as app_type,
+    datediff(hour, jp.date_created, ja.date_created) as time_hours_till_app
+  from intl.job jp
+  join reporting.DW_D_DATE dd         on date(jp.date_created) = dd.date
+  join analytics.DW_D_DATE_CURRENT dc on dd.date = dc.date and dd.year >= year(now())-1 and dd.date < date(current_date)
+  join intl.job_application ja        on jp.id = ja.job_id and jp.country_code = ja.country_code
+  where jp.search_status = 'Approved') app_job
+where app_no between 1 and 10
+group by 1,2,3,4,5,6,7
