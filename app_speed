@@ -4,9 +4,9 @@ select distinct
   year, date, current_date_sameday,
   country,
   vertical,
-  app_no,
   app_type,
-  avg(time_hours_till_app) as avg_hours_till_app  
+  app_no,
+  time_hours_till_app as hours_till_app  
 from
   (select distinct 
     dd.year, dd.date, dc.current_date_sameday,
@@ -21,8 +21,9 @@ from
   join intl.job_application ja        on jp.id = ja.job_id and jp.country_code = ja.country_code
   where jp.search_status = 'Approved') app_job
 where app_no between 1 and 10
-group by 1,2,3,4,5,6,7
+group by 1,2,3,4,5,6,7,8
 
+union
 
 ---------- New Premiums
 
@@ -31,7 +32,8 @@ select
   country,
   vertical,
   upgrade_type,
-  avg(time_hours_till_upgrade) as avg_hours_till_upgrade,  
+  0 as app_no,
+  time_hours_till_upgrade as hours_till_upgrade  
 from
   (select
     dd.year, dd.date, dc.current_date_sameday,
@@ -56,4 +58,4 @@ from
     and tt.amount > 0 
     and date(mm.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated)
   group by 1,2,3,4,5,6,7,8  order by 1 asc) up
-group by 1,2,3,4,5,6
+group by 1,2,3,4,5,6,7,8
