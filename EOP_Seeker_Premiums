@@ -1,17 +1,16 @@
 select 
-  dd.year, dd.month_start_date, dd.month_name, dd.date, m.countrycode,
-  count(distinct sp.subscriptionId) as EOP_Premiums,
-  count(distinct case when mm.memberstatus = 'PendingActive' then sp.subscriptionId end) as EOP_Pending
-    
+  dd.year, dd.date, 
+  count(distinct sp.memberid) as EOP_Premiums,
+  count(distinct case when mm.memberstatus = 'PendingActive' then sp.memberid end) as EOP_Pending
+     
 from intl.transaction tt
-  join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code
-  join intl.hive_member mm            on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and lower(mm.role) = 'seeker'  
-  join (select distinct year, month_start_date, month_name, date from reporting.dw_d_date) dd on date(sp.subscriptionDateCreated) <= dd.date and date(sp.nextPaymentDate) > dd.date
+  join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code 
+  join intl.hive_member mm            on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker' 
+  join reporting.dw_d_date dd         on date(sp.subscriptionEndDate) > dd.date 
 
 where tt.type in ('PriorAuthCapture','AuthAndCapture')
   and tt.status = 'SUCCESS'
   and tt.amount > 0
   and dd.date < date(current_date)
-  and dd.year >= year(now())-2
 
-group by 1,2,3,4,5 
+group by 1,2 
