@@ -12,5 +12,6 @@ where tt.type in ('PriorAuthCapture','AuthAndCapture')
   and tt.status = 'SUCCESS'
   and tt.amount > 0
   and dd.date < date(current_date)
+  and dd.year >= year(now())-1
 
 group by 1,2 
