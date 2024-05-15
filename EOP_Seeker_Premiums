@@ -1,7 +1,7 @@
 select 
   dd.year, dd.month_start_date, dd.month_name, dd.date, m.countrycode,
   count(distinct sp.subscriptionId) as EOP_Premiums,
-  count(distinct distinct case when mm.memberstatus = 'PendingActive' then sp.subscriptionId end) as EOP_Pending
+  count(distinct case when mm.memberstatus = 'PendingActive' then sp.subscriptionId end) as EOP_Pending
     
 from intl.transaction tt
   join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code
