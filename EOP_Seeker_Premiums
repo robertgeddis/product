@@ -1,13 +1,12 @@
 select distinct
   dd.month_end,
   dd.date,
-  count(distinct sp.memberid) as premiums,
   count(distinct case when date(sp.nextpaymentdate) > dd.date then sp.memberid end) as active_premiums,
   count(distinct case when date(sp.nextpaymentdate) > dd.date and mm.memberstatus = 'PendingActive' then sp.memberid end) as pending_premiums
-  
+
 from intl.transaction tt
   join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code 
-  join intl.hive_member mm            on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker' 
+  join intl.hive_member mm            on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and lower(mm.role) = 'seeker' 
   join (select distinct date(fiscal_month_end_date) as month_end, date from reporting.dw_d_date where year >= year(now())-1 and date < date(current_date)) dd on date(sp.subscriptiondatecreated) <= dd.date
 
 where tt.type in ('PriorAuthCapture','AuthAndCapture')
