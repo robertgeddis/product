@@ -8,8 +8,19 @@ select
   base_dates.run_date,
   sum(spend_usd) as spend_usd,
   sum(visits) as visits, 
-  sum(retention.premium_balance) as premium_balance,
-  sum(retention.churn) as churn
+  sum(basics) as basics,
+  sum(total_premiums) as total_premiums,
+  sum(day1_premiums) as day1_premiums,
+  sum(day30_premiums) as day30_premiums,
+  sum(nth_premiums) as nth_premiums, 
+  sum(reupgrades) as reupgrades,   
+  sum(premium_balance) as premium_balance,
+  sum(churn) as churn,
+  sum(jobs) as jobs,
+  sum(apps) as apps,
+  sum(auto_apps) as auto_apps,
+  sum(manual_apps) as manual_apps,
+  sum(jobs_no_apps) as jobs_no_apps  
   
 from (
 --1. Base dates
@@ -348,10 +359,51 @@ left join (
 ) visits on base_dates.date = visits.date and base_dates.countrycode = visits.countrycode and base_dates.vertical = visits.vertical
 
 left join (
+      select
+        dd.date, mm.countrycode,
+        case when mm.vertical = 'homeCare' then 'Housekeeping'
+             when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
+             when mm.vertical is null then 'OV'
+          else initcap(lower(mm.vertical)) end as vertical,
+        count(distinct mm.memberid) as basics  
+      from intl.hive_member mm   
+      join reporting.DW_D_DATE dd on date(mm.dateMemberSignup) = dd.date and dd.year >= year(now()) and dd.date < date(current_date)
+      where lower(mm.campaign) in ('sem', 'online', 'affiliate', 'influencer', 'seo') 
+        and lower(mm.site) not like 'careus%' 
+        and mm.IsInternalAccount = 'false'
+        and lower(mm.role) = 'seeker'
+      group by 1,2,3) basics on base_dates.date = basics.date and base_dates.countrycode = basics.countrycode and base_dates.vertical = basics.vertical 
+      
+left join (
+      select
+        d.date,
+        case when mm.vertical = 'homeCare' then 'Housekeeping'
+           when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
+           when mm.vertical is null then 'OV'
+          else initcap(lower(mm.vertical)) end as vertical,
+        mm.countrycode,
+        count(distinct sp.subscriptionId) as total_premiums,
+        count(distinct case when date(sp.subscriptionDateCreated) = date(mm.dateMemberSignup) then sp.subscriptionId end) as day1_premiums,
+        count(distinct case when date(mm.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated) and datediff('day', mm.dateMemberSignup, sp.subscriptionDateCreated)<=30 then sp.subscriptionId end) as day30_premiums,
+        count(distinct case when date(mm.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated) and date(sp.subscriptionDateCreated) != date(mm.dateMemberSignup) then sp.subscriptionId end) as nth_premiums, 
+        count(distinct case when date(mm.dateFirstPremiumSignup) != date(sp.subscriptionDateCreated) then sp.subscriptionId end) as reupgrades     
+      from intl.transaction tt
+        join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code
+        join reporting.DW_D_DATE d          on date(sp.subscriptionDateCreated) = d.date and d.year >= year(now()) and d.date < date(current_date)
+        join intl.hive_member mm            on sp.memberid = mm.memberid and sp.countrycode = mm.countrycode
+      where tt.type in ('PriorAuthCapture','AuthAndCapture')
+        and tt.status = 'SUCCESS'
+        and tt.amount > 0
+        and mm.IsInternalAccount = 'false'
+        and lower(mm.campaign) in ('sem', 'online', 'affiliate', 'influencer', 'seo') 
+        and lower(mm.site) not like 'careus%'  
+        and lower(mm.role) = 'seeker'
+      group by 1,2,3) premiums on base_dates.date = premiums.date and base_dates.countrycode = premiums.countrycode and base_dates.vertical = premiums.vertical
+
+left join (
       with premium_balance as (
           select distinct
-            dd.date,
-            mm.countrycode,
+            dd.date, mm.countrycode,
             case when mm.vertical = 'homeCare' then 'Housekeeping'
                  when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
                  when mm.vertical is null then 'OV'
@@ -368,8 +420,7 @@ left join (
     
       churn as (
          select
-          dd.date,
-          mm.countrycode,
+          dd.date, mm.countrycode,
           case when mm.vertical = 'homeCare' then 'Housekeeping'
                when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
                when mm.vertical is null then 'OV'
@@ -394,5 +445,25 @@ left join (
       full outer join churn c on p.date = c.date and p.countrycode = c.countrycode and p.vertical = c.vertical
       group by 1,2,3 order by 1      
 ) retention on base_dates.date = retention.date and base_dates.countrycode = retention.countrycode and base_dates.vertical = retention.vertical
+
+left join (
+      select
+        dd.date,
+        jp.country_code as countrycode,
+        case when mm.vertical = 'homeCare' then 'Housekeeping'
+             when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
+             when mm.vertical is null then 'OV'
+         else initcap(lower(mm.vertical)) end as vertical,
+        count(distinct jp.id) as jobs,
+        count(distinct ja.id) as apps,
+        count(distinct case when ja.was_sent_automatically = 'true' then ja.id end) as auto_apps,
+        count(distinct case when ja.was_sent_automatically = 'false' then ja.id end) as manual_apps,
+        count(distinct case when ja.id is null then jp.id end) as jobs_no_apps   
+      from intl.job jp
+        join intl.hive_member mm            on mm.memberid = jp.member_id and mm.countrycode = jp.country_code and mm.IsInternalAccount = 'false'
+        left join intl.job_application ja   on jp.id = ja.job_id and jp.country_code = ja.country_code
+        join reporting.DW_D_DATE dd         on date(jp.date_created) = dd.date and dd.year >= year(now()) and dd.date < date(current_date)
+      where jp.search_status = 'Approved'
+      group by 1,2,3) jobs_apps on base_dates.date = jobs_apps.date and base_dates.countrycode = jobs_apps.countrycode and base_dates.vertical = jobs_apps.vertical
 
 group by 1,2,3,4,5,6,7
