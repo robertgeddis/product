@@ -7,6 +7,7 @@ select
   base_dates.YearToDate,
   base_dates.run_date,
   sum(spend_usd) as spend_usd,
+  sum(visits) as visits, 
   sum(retention.premium_balance) as premium_balance,
   sum(retention.churn) as churn
   
@@ -44,55 +45,6 @@ from (
     year(dd.date) >= year(now())
     and dd.date < current_date()
 ) base_dates
-
-left join (
-      with premium_balance as (
-          select distinct
-            dd.date,
-            mm.countrycode,
-            case when mm.vertical = 'homeCare' then 'Housekeeping'
-                 when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
-                 when mm.vertical is null then 'OV'
-              else initcap(lower(mm.vertical)) end as vertical,
-            count(distinct case when date(sp.nextpaymentdate) > dd.date then sp.subscriptionId end) as premiums
-          from intl.transaction tt
-            join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code 
-            join intl.hive_member mm            on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker' 
-            join (select distinct date from reporting.dw_d_date where year >= year(now()) and date < date(current_date)) dd on date(subscriptiondatecreated) < dd.date
-          where tt.type in ('PriorAuthCapture','AuthAndCapture')
-            and tt.status = 'SUCCESS'
-            and tt.amount > 0
-          group by 1,2,3),
-    
-      churn as (
-         select
-          dd.date,
-          mm.countrycode,
-          case when mm.vertical = 'homeCare' then 'Housekeeping'
-               when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
-               when mm.vertical is null then 'OV'
-            else initcap(lower(mm.vertical)) end as vertical,
-          count(distinct sp.subscriptionId) as churn
-        from intl.transaction tt
-          join intl.hive_subscription_plan sp       on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code and sp.subscriptionEndDate is not null
-          join intl.hive_member mm                  on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker' 
-          join reporting.dw_d_date dd               on dd.date = date(sp.subscriptionenddate) and year >= year(now()) and dd.date < date(current_date) 
-        where tt.type in ('AuthAndCapture')
-          and tt.status = 'SUCCESS'
-          and tt.amount > 0
-        group by 1,2,3)
-  
-      select 
-        coalesce(p.date, c.date) as date,
-        coalesce(p.countrycode, c.countrycode) as countrycode,
-        coalesce(p.vertical, c.vertical) as vertical,
-        ifnull(sum(p.premiums),0) as premium_balance,
-        ifnull(sum(c.churn),0) as churn
-      from premium_balance p
-      full outer join churn c on p.date = c.date and p.countrycode = c.countrycode and p.vertical = c.vertical
-      group by 1,2,3 order by 1
-      
-) retention on base_dates.date = retention.date and base_dates.countrycode = retention.countrycode and base_dates.vertical = retention.vertical
 
 left join (
     select distinct 
@@ -368,8 +320,79 @@ left join (
     ) comb
       join reporting.DW_CARE_FX_RATES fx  on fx.source_currency = comb.currency and source_currency in ('EUR','GBP','CAD','AUD') and fx.target_currency = 'USD' and fx.currency_rate_type = 'Current'
       group by 1,2,3
-
 ) spend on base_dates.date = spend.date and base_dates.countrycode = spend.countrycode and base_dates.vertical = spend.vertical      
 
+left join (
+    select 
+      dd.date, v.countrycode, 
+      case when lower(rxservice) in ('childcare', 'cc', 'c') or lower(rxservice) like '%child%' then 'Childcare'
+           when ( lower(rxservice) in ('housekeeping', 'homecare', 'hk', 'ho') or lower(rxservice) like '%homecare%' ) then 'Housekeeping'
+           when ( lower(rxservice) in ('petcare', 'pc', 'hk', 'ho') or lower(rxservice) like '%petcare%' ) then 'Petcare'
+           when ( lower(rxservice) not in ('childcare', 'cc', 'c', 'housekeeping', 'homecare', 'hk', 'ho', 'petcare', 'pc', 'hk', 'ho') or regexp_not_ilike(rxservice, 'child | homecare | petcare') ) then 'OV'
+           when lower(rxsite) in ('msn', 'awin', 'pinterest', 'kleinanzeigen', 'spotify', 'impact') then 'OV'
+           when lower(rxsite) = 'qualityclick' and rxcreativeversion = '372' then 'Childcare' 
+           when lower(rxsite) = 'qualityclick' and rxcreativeversion in ('468', '469', '472') then 'Housekeeping'  
+           when lower(rxsite) = 'qualityclick' and rxcreativeversion in ('17', '480') then 'Petcare'  
+           when lower(rxsite) = 'qualityclick' and rxcreativeversion not in ('372', '468', '472', '17', '480') then 'OV' 
+           when lower(rxsite) = 'putzchecker' then 'Housekeeping' 
+           when lower(rxsite) = 'tiktok' then 'Childcare'       
+        else concat(lower(rxsite), lower(rxservice)) end as vertical,
+      count(distinct visitorid) as visits                                                         
+    from intl.hive_visit v 
+    join reporting.DW_D_DATE dd on date(startDate) = dd.date and dd.year >= year(now()) and dd.date < date(current_date)
+    where lower(v.rxcampaign) in ('sem', 'online', 'affiliate', 'influencer', 'seo') 
+      and lower(v.rxsite) not like 'careus%'
+      and (v.memberid is null or v.signup = true)
+      and lower(v.rxaudience) in ('seeker', 'all', 'general') 
+    group by 1,2,3
+) visits on base_dates.date = visits.date and base_dates.countrycode = visits.countrycode and base_dates.vertical = visits.vertical
+
+left join (
+      with premium_balance as (
+          select distinct
+            dd.date,
+            mm.countrycode,
+            case when mm.vertical = 'homeCare' then 'Housekeeping'
+                 when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
+                 when mm.vertical is null then 'OV'
+              else initcap(lower(mm.vertical)) end as vertical,
+            count(distinct case when date(sp.nextpaymentdate) > dd.date then sp.subscriptionId end) as premiums
+          from intl.transaction tt
+            join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code 
+            join intl.hive_member mm            on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker' 
+            join (select distinct date from reporting.dw_d_date where year >= year(now()) and date < date(current_date)) dd on date(subscriptiondatecreated) < dd.date
+          where tt.type in ('PriorAuthCapture','AuthAndCapture')
+            and tt.status = 'SUCCESS'
+            and tt.amount > 0
+          group by 1,2,3),
+    
+      churn as (
+         select
+          dd.date,
+          mm.countrycode,
+          case when mm.vertical = 'homeCare' then 'Housekeeping'
+               when lower(mm.vertical) not in ('childcare','homecare','petcare','housekeeping') then 'OV'
+               when mm.vertical is null then 'OV'
+            else initcap(lower(mm.vertical)) end as vertical,
+          count(distinct sp.subscriptionId) as churn
+        from intl.transaction tt
+          join intl.hive_subscription_plan sp       on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code and sp.subscriptionEndDate is not null
+          join intl.hive_member mm                  on tt.member_id = mm.memberid and tt.country_code = mm.countrycode and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker' 
+          join reporting.dw_d_date dd               on dd.date = date(sp.subscriptionenddate) and year >= year(now()) and dd.date < date(current_date) 
+        where tt.type in ('AuthAndCapture')
+          and tt.status = 'SUCCESS'
+          and tt.amount > 0
+        group by 1,2,3)
+  
+      select 
+        coalesce(p.date, c.date) as date,
+        coalesce(p.countrycode, c.countrycode) as countrycode,
+        coalesce(p.vertical, c.vertical) as vertical,
+        ifnull(sum(p.premiums),0) as premium_balance,
+        ifnull(sum(c.churn),0) as churn
+      from premium_balance p
+      full outer join churn c on p.date = c.date and p.countrycode = c.countrycode and p.vertical = c.vertical
+      group by 1,2,3 order by 1      
+) retention on base_dates.date = retention.date and base_dates.countrycode = retention.countrycode and base_dates.vertical = retention.vertical
 
 group by 1,2,3,4,5,6,7
