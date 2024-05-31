@@ -60,3 +60,30 @@ group by 1,2,3,4,5,6,7 order by 1,2 desc
 
 group by 1,2,3,4
 
+-------------------------------------------------------------------
+
+select 
+  year, 
+  date, 
+  renewal_rank,
+  sum(premiums) as premiums 
+from (
+    select 
+       dd.year,
+       dd.date,
+       count(distinct tt.subscription_plan_id) as premiums,
+       case when rt.subscription_plan_id is null then '0'
+            when rt.subscription_plan_id is not null then rank() over (partition by rt.subscription_plan_id order by rt.billed_service_start_date asc) 
+        end as renewal_rank    
+    from intl.hive_subscription_plan sp
+      join intl.hive_member mm          on sp.countrycode = mm.countrycode and sp.memberid = mm.memberid and mm.IsInternalAccount = 'false' and mm.closedforfraud = 'false' and lower(mm.role) = 'seeker'
+      join intl.transaction tt          on tt.country_code = sp.countrycode and tt.member_id = sp.memberid and tt.subscription_plan_id = sp.subscriptionid and tt.type = 'PriorAuthCapture' and tt.status = 'SUCCESS' and tt.amount > 0 
+                                        and date(sp.subscriptiondatecreated) = date(tt.billed_service_start_date)
+      left join intl.transaction rt     on rt.country_code = sp.countrycode and rt.member_id = sp.memberid and rt.subscription_plan_id = sp.subscriptionid and rt.type = 'AuthAndCapture' and rt.status = 'SUCCESS' and rt.amount > 0 
+                                        and rt.billed_service_start_date > date(sp.subscriptiondatecreated)                                   
+      join reporting.DW_D_DATE dd       on date(sp.subscriptiondatecreated) = dd.date and dd.date < date(current_date) and dd.year = 2024  --and dd.year >= year(now())-2 
+    group by 1,2,tt.subscription_plan_id,rt.subscription_plan_id,rt.billed_service_start_date
+    ) abc
+--where renewal_rank > 0
+group by 1,2,3 order by 1,2,3 asc
+
