@@ -3,7 +3,7 @@ select
   date, week_start_date, current_date_sameday, 
   countrycode, member_type, user_device, vertical, subscription_length, payment_type,
   case when ranking = 1 then 'First Period Renewal' else 'Non-First Period Renewal' end as renewal_period,
-  count(distinct a.subscriptionid) as renewals 
+  count(distinct subscriptionid) as renewals 
 from (
   select
     ddd.date, ddd.week_start_date, dc.current_date_sameday, 
@@ -17,7 +17,7 @@ from (
       and t.type in ('PriorAuthCapture','AuthAndCapture') and t.status = 'SUCCESS' and t.amount > 0
     join intl.credit_card cc on cc.id = t.credit_card_id and t.member_id = cc.member_id and t.country_code = cc.country_code
     join reporting.dw_d_date ddd on date(t.when_processed) = ddd.date and ddd.year >= 2019 and ddd.date < date(current_date)
-    join analytics.dw_d_date_current dc on dc.date = date(t.when_processed)
+    join analytics.dw_d_date_current dc on dc.date = ddd.date
     left join intl.hive_event updev on updev.countrycode = sp.countrycode and updev.memberid = sp.memberid and updev.objectid = sp.subscriptionid 
       and date(updev.datecreated) = date(sp.subscriptiondatecreated) and updev.name = 'Upgrade'
   where date(sp.subscriptiondatecreated) < date(current_date)
