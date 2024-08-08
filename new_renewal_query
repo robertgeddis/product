@@ -50,7 +50,7 @@ downgrades as (
           where date(sp.subscriptiondatecreated) < date(current_date)
           group by 1,2,3,4,5,6,7,8,9,10,11
       ) a
-    where ranking > 0
+    where ranking > 0 --- CURRENTLY EXCLUDING THOSE WHO DOWNGRADED IN SAME MONTH. DO WE WANT TO INCLUDE? IF YES, AS FIRST PERIOD RENEWAL?
     group by 1,2,3,4,5,6,7,8,9,10)
     
 select
