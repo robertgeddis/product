@@ -1,7 +1,5 @@
 drop view if exists analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2; 
 
-grant select on analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2 to reporting_ro, analytics_team;
-
 create view analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2 as
 
 with renewals as (
@@ -35,7 +33,7 @@ downgrades as (
     select
       date, week_start_date, current_date_sameday, 
       countrycode, member_type, user_device, vertical, subscription_length, payment_type,
-      case when ranking = 1 then 'First Period Renewal' else 'Non-First Period Renewal' end as renewal_period,
+      case when ranking in (0,1) then 'First Period Renewal' else 'Non-First Period Renewal' end as renewal_period,
       count(distinct subscriptionid) as downgrades
     from (
         select
@@ -82,3 +80,5 @@ full outer join downgrades d on r.date = d.date and r.week_start_date = d.week_s
                              
 group by 1,2,3,4,5,6,7,8,9,10 
 order by 1,2 asc
+
+grant select on analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2 to reporting_ro, analytics_team;
