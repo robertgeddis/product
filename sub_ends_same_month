@@ -1,0 +1,21 @@
+select distinct 
+  sp.subscriptionid, sp.subscriptiondatecreated, sp.subscriptionenddate,
+  cd.subscription_plan_id, cd.action_date, cd.user_type, cd.when_action, cd.action_reason,
+  rc.type as refunded, rc.date_created as refund_date
+     
+from intl.transaction tt
+  join intl.hive_subscription_plan sp       on sp.subscriptionId = tt.subscription_plan_id and sp.countrycode = tt.country_code
+  join intl.hive_member m                   on tt.member_id = m.memberid and tt.country_code = m.countrycode
+  left join intl.CLOSE_DOWNGRADE_DETAIL cd  on cd.member_id = sp.memberid and cd.subscription_plan_id = sp.subscriptionid and cd.country_code = sp.countrycode
+                                            and cd.action_performed = 'Downgrade' 
+  left join intl.transaction rc             on rc.subscription_plan_id = tt.subscription_plan_id and rc.country_code = tt.country_code
+                                            and rc.type in ('Credit','Chargeback') and rc.status = 'SUCCESS' and rc.amount > 0                                         
+  
+where tt.type in ('PriorAuthCapture','AuthAndCapture')
+  and tt.status = 'SUCCESS'
+  and tt.amount > 0
+  and m.IsInternalAccount = 'false'
+  and year(sp.subscriptionDateCreated) >= 2021
+  and datediff('month', sp.subscriptiondatecreated, sp.subscriptionenddate) = 0
+  and sp.subscriptionenddate is not null
+  and m.closedforfraud = 'false'
