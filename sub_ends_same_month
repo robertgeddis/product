@@ -1,5 +1,5 @@
 select distinct 
-  sp.subscriptionid, sp.subscriptiondatecreated, sp.subscriptionenddate,
+  sp.memberid, sp.subscriptionid, sp.subscriptiondatecreated, sp.subscriptionenddate,
   cd.subscription_plan_id as close_downgrade_table_sub_id, cd.action_date, cd.user_type, cd.when_action, cd.action_reason,
   rc.type as refunded, rc.date_created as refund_date
      
