@@ -1,6 +1,8 @@
-drop view if exists analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2; 
+drop view if exists analytics.vw_INTL_Daily_Renewals_Downgrades; 
 
-create view analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2 as
+grant select on analytics.vw_INTL_Daily_Renewals_Downgrades to reporting_ro, analytics_team;
+
+create view analytics.vw_INTL_Daily_Renewals_Downgrades as
 
 with renewals as (
   select
@@ -79,5 +81,3 @@ full outer join downgrades d on r.date = d.date and r.week_start_date = d.week_s
                              
 group by 1,2,3,4,5,6,7,8,9,10 
 order by 1,2 asc
-
-grant select on analytics.vw_INTL_Daily_Renewals_Downgrades_TEST_v2 to reporting_ro, analytics_team;
