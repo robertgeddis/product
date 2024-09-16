@@ -5,7 +5,10 @@ with jobs as (
     initcap(jb.vertical_id) as vertical,
     datediff('hour', jb.date_created, ja.date_created) as time_between_job_app
   from intl.job jb
-  --- join on member to exclude reupgrades?
+  /*
+  Exclude reupgrades?
+  join intl.hive_member m on jb.member_id = m.memberid and jb.countrycode = m.countrycode and m.lower(m.membertype) not in ('reupgrade', 'reupgrade provider') 
+  */
   join intl.job_application ja on jb.id = ja.job_id and jb.country_code = ja.country_code 
     and jb.date_created < ja.date_created and ja.was_sent_automatically = 'false'
   where jb.search_status = 'Approved'
@@ -36,7 +39,8 @@ premiums as (
   from intl.transaction t
   join intl.hive_subscription_plan sp on sp.subscriptionId = t.subscription_plan_id and sp.countrycode = t.country_code
     and year(sp.subscriptionDateCreated) = year(now())-2 and date(sp.subscriptionDateCreated) < date(current_date)
-  join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode and date(m.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated)
+  join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode 
+    and date(m.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated) /* Only New Premiums */
     and m.isinternalaccount = 'false'
     and lower(m.role) = 'seeker' 
   where t.type in ('PriorAuthCapture','AuthAndCapture') and t.status = 'SUCCESS' and t.amount > 0
