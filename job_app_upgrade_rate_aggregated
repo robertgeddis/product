@@ -1,0 +1,19 @@
+with job_app as (
+  select 
+    upper(jb.country_code) as country,
+    initcap(jb.vertical_id) as vertical,
+    datediff('hour', jb.date_created, ja.date_created) as time_between_job_app
+  from intl.job jb
+  join intl.job_application ja on jb.id = ja.job_id and jb.country_code = ja.country_code 
+    and jb.date_created < ja.date_created and ja.was_sent_automatically = 'false'
+  where jb.search_status = 'Approved'
+    and year(jb.date_created) >= 2021
+    and jb.date_created < current_date
+)
+
+select
+  country,
+  vertical,
+  approximate_median(time_between_job_app) as median_hours_between_job_app
+from job_app
+group by 1,2 order by 1,2 
