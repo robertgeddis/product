@@ -2,12 +2,13 @@
 NOTES
 + A seeker can have more than one job, how do we deal with that when measuring upgrade conversion metrics?
 + Limiting to only new premiums for simplicity - though need to think through logic, see example of reupgrade below.
+* Hypothesis: The longer it takes to send manual app the lower the B2P
 */
 
 select 
   jobs_apps.country,
   jobs_apps.vertical,
-  jobs_apps.seeker,
+  --jobs_apps.seeker,
   jobs_apps.job,
   jobs_apps.job_post_date,
   jobs_apps.job_post_method,
@@ -15,15 +16,11 @@ select
   jobs_apps.app,
   jobs_apps.app_sent_date,
   jobs_apps.app_type,
-  case when subscription_id is not null and jobs_apps.job_post_date > upgrades.upgrade_date then 'Upgraded Before Job Post' 
-       when subscription_id is not null and jobs_apps.job_post_date < upgrades.upgrade_date then 'Upgraded After Job Post'
-    else null end as job_upgrade_status, 
-  case when subscription_id is not null and jobs_apps.app_sent_date > upgrades.upgrade_date then 'Upgraded Before First App' 
-       when subscription_id is not null and jobs_apps.app_sent_date < upgrades.upgrade_date then 'Upgraded After First App'
-    else null end as app_upgrade_status,
   datediff(hh,jobs_apps.job_post_date,jobs_apps.app_sent_date) as hours_job_post_app,
   upgrades.subscription_id,
-  upgrades.upgrade_date 
+  upgrades.upgrade_start_date,
+  upgrades.upgrade_end_date
+  
 from
   (select 
       upper(jb.country_code) as country,
@@ -48,17 +45,20 @@ left join
     upper(mm.countrycode) as country,
     mm.memberid as seeker,
     sp.subscriptionid as subscription_id,
-    sp.subscriptionDateCreated as upgrade_date 
+    mm.dateFirstPremiumSignup,
+    sp.subscriptionDateCreated as upgrade_start_date,
+    sp.subscriptionEndDate as upgrade_end_date
   from intl.transaction tt
   join intl.hive_subscription_plan sp on sp.subscriptionId = tt.subscription_plan_id 
             and sp.countrycode = tt.country_code and year(sp.subscriptionDateCreated) >= 2021 
             and date(sp.subscriptionDateCreated) < date(current_date)
   join intl.hive_member mm on tt.member_id = mm.memberid and tt.country_code = mm.countrycode
-            and mm.IsInternalAccount = 'false' and lower(mm.role) = 'seeker'    
+            and mm.IsInternalAccount = 'false' and lower(mm.role) = 'seeker'  
+            and year(dateFirstPremiumSignup) >= 2021  
   where tt.type in ('PriorAuthCapture','AuthAndCapture')
     and tt.status = 'SUCCESS'
     and date(mm.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated)
     and tt.amount > 0) upgrades on jobs_apps.seeker = upgrades.seeker and jobs_apps.country = upgrades.country 
-                                      and date(upgrade_date) >= date(jobs_apps.job_post_date)
+                                      and dateFirstPremiumSignup > jobs_apps.job_post_date
                                   
 where jobs_apps.seeker in ('1234459')
