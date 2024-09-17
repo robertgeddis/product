@@ -31,11 +31,14 @@ premiums as (
       month(sp.subscriptionDateCreated) as year, 
       upper(m.countrycode) as country, 
       case when (m.vertical is null or m.vertical = '') then 'Childcare' else initcap(m.vertical) end as vertical,
-      count(distinct sp.subscriptionId) as new_premiums
+      count(distinct sp.subscriptionId) as premiums,
+      count(distinct case when date(sp.subscriptionDateCreated) = date(m.dateMemberSignup) then sp.subscriptionId end) as day1s,
+      count(distinct case when date(m.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated) and date(sp.subscriptionDateCreated) != date(m.dateMemberSignup) then sp.subscriptionId end) as nths,
+      count(distinct case when date(m.dateFirstPremiumSignup) != date(sp.subscriptionDateCreated) then sp.subscriptionId end) as reupgrades
   from intl.transaction t
   join intl.hive_subscription_plan sp on sp.subscriptionId = t.subscription_plan_id and sp.countrycode = t.country_code
     and year(sp.subscriptionDateCreated) = year(now()) and date(sp.subscriptionDateCreated) < date(current_date)
-  join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode and date(m.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated)
+  join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode 
     and m.isinternalaccount = 'false'
     and lower(m.role) = 'seeker' 
   where t.type in ('PriorAuthCapture','AuthAndCapture') and t.status = 'SUCCESS' and t.amount > 0
@@ -47,11 +50,12 @@ select
   coalesce(j.country, b.country, p.country) as country,
   coalesce(j.vertical, b.vertical, p.vertical) as vertical,
   approximate_median(j.time_between_job_app) as median_hours_between_job_app,
-  b.basics,
-  p.new_premiums  
-  
+  ifnull(b.basics,0) as basics,
+  ifnull(p.premiums,0) as premiums,
+  ifnull(p.day1s,0) as day1s,
+  ifnull(p.nths,0) as nths,
+  ifnull(p.reupgrades,0) as reupgrades 
 from jobs j
 left join basics b    on j.year = b.year and j.country = b.country and j.vertical = b.vertical
 left join premiums p  on j.year = p.year and j.country = p.country and j.vertical = p.vertical
-
-group by 1,2,3,5,6 order by 1,2,3 
+group by 1,2,3,5,6,7,8,9 order by 1,2,3 
