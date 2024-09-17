@@ -1,34 +1,32 @@
 with jobs as (
   select 
-    year(jb.date_created) as year,
+    dd.year,
     upper(jb.country_code) as country,
     initcap(jb.vertical_id) as vertical,
     datediff('hour', jb.date_created, ja.date_created) as time_between_job_app
   from intl.job jb
   join intl.job_application ja on jb.id = ja.job_id and jb.country_code = ja.country_code 
     and jb.date_created < ja.date_created and ja.was_sent_automatically = 'false'
+  join reporting.dw_d_date dd on dd.date = date(jb.date_created) and dd.date < date(current_date) and dd.year >= year(current_date)-2 
   where jb.search_status = 'Approved'
-    and year(jb.date_created) >= year(current_date)-2
-    and date(jb.date_created) < current_date
 ),
 
 basics as (
   select
-     year(m.dateMemberSignup) as year,
+     dd.year,
      upper(m.countryCode) as country,
      case when (m.vertical is null or m.vertical = '') then 'Childcare' else initcap(m.vertical) end as vertical,
      count(distinct memberid) as basics
   from intl.hive_member m
+  join reporting.dw_d_date dd on dd.date = date(m.dateMemberSignup) and dd.date < date(current_date) and dd.year >= year(current_date)-2 
   where IsInternalAccount = 'false'
     and lower(m.role) = 'seeker'
-    and year(m.dateMemberSignup) >= year(current_date)-2
-    and date(m.dateMemberSignup) < date(current_date)
   group by 1,2,3
 ),
 
 premiums as (
   select
-      year(sp.subscriptionDateCreated) as year, 
+      dd.year, 
       upper(m.countrycode) as country, 
       case when (m.vertical is null or m.vertical = '') then 'Childcare' else initcap(m.vertical) end as vertical,
       count(distinct sp.subscriptionId) as premiums,
@@ -37,8 +35,8 @@ premiums as (
       count(distinct case when date(m.dateFirstPremiumSignup) != date(sp.subscriptionDateCreated) then sp.subscriptionId end) as reupgrades
   from intl.transaction t
   join intl.hive_subscription_plan sp on sp.subscriptionId = t.subscription_plan_id and sp.countrycode = t.country_code
-    and year(sp.subscriptionDateCreated) = year(now())-2 and date(sp.subscriptionDateCreated) < date(current_date)
   join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode 
+  join reporting.dw_d_date dd on dd.date = date(sp.subscriptionDateCreated) and dd.date < date(current_date) and dd.year >= year(current_date)-2 
     and m.isinternalaccount = 'false'
     and lower(m.role) = 'seeker' 
   where t.type in ('PriorAuthCapture','AuthAndCapture') and t.status = 'SUCCESS' and t.amount > 0
