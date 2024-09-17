@@ -1,46 +1,41 @@
 with jobs as (
   select 
-    year(jb.date_created) as year,
+    month(jb.date_created) as year,
     upper(jb.country_code) as country,
     initcap(jb.vertical_id) as vertical,
     datediff('hour', jb.date_created, ja.date_created) as time_between_job_app
   from intl.job jb
-  /*
-  Exclude reupgrades?
-  join intl.hive_member m on jb.member_id = m.memberid and jb.countrycode = m.countrycode and m.lower(m.membertype) not in ('reupgrade', 'reupgrade provider') 
-  */
   join intl.job_application ja on jb.id = ja.job_id and jb.country_code = ja.country_code 
     and jb.date_created < ja.date_created and ja.was_sent_automatically = 'false'
   where jb.search_status = 'Approved'
-    and year(jb.date_created) >= year(current_date)-2
+    and year(jb.date_created) >= year(current_date)
     and date(jb.date_created) < current_date
 ),
 
 basics as (
   select
-     year(m.dateMemberSignup) as year,
+     month(m.dateMemberSignup) as year,
      upper(m.countryCode) as country,
      case when (m.vertical is null or m.vertical = '') then 'Childcare' else initcap(m.vertical) end as vertical,
      count(distinct memberid) as basics
   from intl.hive_member m
   where IsInternalAccount = 'false'
     and lower(m.role) = 'seeker'
-    and year(m.dateMemberSignup) >= year(current_date)-2
+    and year(m.dateMemberSignup) >= year(current_date)
     and date(m.dateMemberSignup) < date(current_date)
   group by 1,2,3
 ),
 
 premiums as (
   select
-      year(sp.subscriptionDateCreated) as year, 
+      month(sp.subscriptionDateCreated) as year, 
       upper(m.countrycode) as country, 
       case when (m.vertical is null or m.vertical = '') then 'Childcare' else initcap(m.vertical) end as vertical,
       count(distinct sp.subscriptionId) as new_premiums
   from intl.transaction t
   join intl.hive_subscription_plan sp on sp.subscriptionId = t.subscription_plan_id and sp.countrycode = t.country_code
-    and year(sp.subscriptionDateCreated) = year(now())-2 and date(sp.subscriptionDateCreated) < date(current_date)
-  join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode 
-    and date(m.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated) /* Only New Premiums */
+    and year(sp.subscriptionDateCreated) = year(now()) and date(sp.subscriptionDateCreated) < date(current_date)
+  join intl.hive_member m on t.member_id = m.memberid and t.country_code = m.countrycode and date(m.dateFirstPremiumSignup) = date(sp.subscriptionDateCreated)
     and m.isinternalaccount = 'false'
     and lower(m.role) = 'seeker' 
   where t.type in ('PriorAuthCapture','AuthAndCapture') and t.status = 'SUCCESS' and t.amount > 0
@@ -52,11 +47,11 @@ select
   coalesce(j.country, b.country, p.country) as country,
   coalesce(j.vertical, b.vertical, p.vertical) as vertical,
   approximate_median(j.time_between_job_app) as median_hours_between_job_app,
-  sum(b.basics) as basics,
-  sum(p.new_premiums) as new_premiums  
+  b.basics,
+  p.new_premiums  
   
 from jobs j
-full outer join basics b    on j.year = b.year and j.country = b.country and j.vertical = b.vertical
-full outer join premiums p  on j.year = p.year and j.country = p.country and j.vertical = p.vertical
+left join basics b    on j.year = b.year and j.country = b.country and j.vertical = b.vertical
+left join premiums p  on j.year = p.year and j.country = p.country and j.vertical = p.vertical
 
-group by 1,2,3 order by 1,2,3 
+group by 1,2,3,5,6 order by 1,2,3 
