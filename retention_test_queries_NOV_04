@@ -38,6 +38,7 @@ from (
 
 //////
 
+--- CHURN ---
 select
     count(distinct sp.subscriptionId) as churn
   from intl.transaction tt
