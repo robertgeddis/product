@@ -1,34 +1,14 @@
-select 
-  --upper(countrycode) as country,
-  case when vt1.entityType = 'JobApplicationTemplate' then 'Job Application'
-       when vt1.entityType = 'ReviewResponse' then 'Review Response'
-       when vt1.entityType = 'VerticalProfile' then 'Profile'
-    else vt1.entityType end as Content_Type,
-  vt2.Policy_Violation,
-  count(distinct vt1.objectId) as 'No_Items', 
-  count(distinct vt1.memberId) as 'No_Members'
-  
-from intl.hive_event vt1
-join (select distinct countrycode, memberid, date, regexp_replace(regexp_replace(Policy_Violation, '([a-z])([A-Z])', '\1 \2'), '([A-Za-z]+)([A-Z][a-z]+)', '\1: \2') as Policy_Violation
-        from (
-          select distinct countrycode, memberid, date(datecreated) as date, case when rejectReason is null then 'No Reason' else split_part(rejectReason, ',', 1) end as Policy_Violation
-          from intl.hive_event where name = 'CSRApproval' and approvalAction = 'Rejected'
-          union 
-          select distinct countrycode, memberid, date(datecreated) as date, case when (rejectReason is null or rejectReason = '') then 'No Reason' else split_part(rejectReason, ', ', 2) end as Policy_Violation
-          from intl.hive_event where name = 'CSRApproval' and approvalAction = 'Rejected'
-          union    
-          select distinct countrycode, memberid, date(datecreated) as date, case when (rejectReason is null or rejectReason = '') then 'No Reason' else split_part(rejectReason, ', ', 3) end as Policy_Violation
-          from intl.hive_event where name = 'CSRApproval' and approvalAction = 'Rejected'
-          union    
-          select distinct countrycode, memberid, date(datecreated) as date, case when (rejectReason is null or rejectReason = '') then 'No Reason' else split_part(rejectReason, ', ', 4) end as Policy_Violation
-          from intl.hive_event where name = 'CSRApproval' and approvalAction = 'Rejected'    
-          union    
-          select distinct countrycode, memberid, date(datecreated) as date, case when (rejectReason is null or rejectReason = '') then 'No Reason' else split_part(rejectReason, ', ', 5) end as Policy_Violation
-          from intl.hive_event where name = 'CSRApproval' and approvalAction = 'Rejected'    
-        ) reason where Policy_Violation <> '') vt2 on vt1.countrycode = vt2.countrycode and vt1.memberid = vt2.memberid and date(vt1.datecreated) = vt2.date
-
-where vt1.name = 'CSRApproval'
-  and date(vt1.datecreated) between '2024-07-01' and '2025-01-31'
-  and vt1.approvalAction = 'Rejected'
-
-group by 1,2 order by 3,4 desc
+select distinct
+  upper(countrycode) as country,
+  case when entityType = 'JobApplicationTemplate' then 'Job Application'
+       when entityType = 'ReviewResponse' then 'Review Response'
+       when entityType = 'VerticalProfile' then 'Profile'
+    else entityType end as Content_Type, 
+  case when rejectReason is null then 'No Reason' else 
+    trim(regexp_replace(regexp_replace(split_part(rejectReason, ',', 1),'(Rejected|SecurityBreach|TOU)',''),'([a-z])([A-Z])', '\1 \2')) end as Violation,
+  count(distinct objectId) as No_Items
+from intl.hive_event 
+where name = 'CSRApproval'
+  and date(datecreated) between '2024-07-01' and '2025-01-31'
+  and approvalAction = 'Rejected'
+group by 1,2,3
