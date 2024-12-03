@@ -1,0 +1,43 @@
+select distinct
+  upper(countrycode) as country,
+  case when entityType = 'JobApplicationTemplate' then 'Job Application'
+       when entityType = 'ReviewResponse' then 'Review Response'
+       when entityType = 'VerticalProfile' then 'Profile'
+    else entityType end as Content_Type, 
+  case when rejectReason is null then 'No Reason' else 
+    trim(regexp_replace(regexp_replace(split_part(rejectReason, ',', 1),'(Rejected|SecurityBreach|TOU)',''),'([a-z])([A-Z])', '\1 \2')) end as Violation,
+  count(distinct objectId) as No_Items
+from intl.hive_event 
+where name = 'CSRApproval'
+  and date(datecreated) between '2024-07-01' and '2025-01-31'
+  and approvalAction = 'Rejected'
+group by 1,2,3
+
+union
+
+select distinct 
+  upper(country_code) as country,
+  'Member' as Content_Type,
+  case when rule_description = 'firstName,phoneNumber,countryCode+' then 'Name, Phone Number and Country'
+       when rule_description = 'lastName,phoneNumber,countryCode+' then 'Name, Phone Number and Country'
+       when rule_description = 'emailAddress+' then 'Email'
+       when rule_description = 'csrBlacklist' then 'Member Care Block List'
+       when rule_description = 'csrBlacklistAuto' then 'Auto Block List'
+    else initcap(cast(rule_description as varchar (100))) end as Violation,
+  count(distinct blacklisted_person_id) as No_Items
+from intl.blacklist_reason 
+where date(date_created) between '2024-07-01' and '2025-01-31'
+group by 1,2,3
+
+union
+
+select distinct 
+  upper(country_code) as country,
+  'Member' as Content_Type,
+  regexp_replace(action_reason, '([a-z])([A-Z])', '\1 \2') as Violation,
+  count(distinct member_id) as No_Items
+from intl.close_downgrade_detail
+where action_performed = 'Close'
+and user_type in ('CSR', 'Backoffice')
+and date(action_date) between '2024-07-01' and '2025-01-31'
+group by 1,2,3
