@@ -1,15 +1,13 @@
 select distinct
-  a.blacklisted_person_id,
   case when b.Blacklist_Reason = 'emailAddress+' then 'Email'
-       when b.Blacklist_Reason = 'countryCode+streetAddress' then 'Address'
+       when lower(cast(b.Blacklist_Reason as varchar (100))) like '%country%' then 'Address'
        when b.Blacklist_Reason = 'firstName' then 'First Name'
        when b.Blacklist_Reason = 'lastName' then 'Last Name'
+       when lower(cast(b.Blacklist_Reason as varchar (100))) like '%phonenumber%' then 'Phone Number'
        when b.Blacklist_Reason = 'latestIp' then 'IP Address'
-    else initcap(cast(b.Blacklist_Reason as varchar (50))) end as Blacklist_Reason
-  
+    else initcap(cast(b.Blacklist_Reason as varchar (50))) end as Blacklist_Reason,
+  count(distinct a.blacklisted_person_id) as blacklisted
 from intl.blacklist_reason a
-
-
 join (  
   select distinct country_code, blacklisted_person_id, date, Blacklist_Reason from (
         select distinct country_code, blacklisted_person_id, date(date_created) as date, split_part(cast(rule_description as varchar), ',', 1) as Blacklist_Reason
@@ -31,6 +29,6 @@ join (
         from intl.blacklist_reason) aa where Blacklist_Reason <> ''
 ) b on a.country_code = b.country_code and a.blacklisted_person_id = b.blacklisted_person_id and date(a.date_created) = b.date 
 
+where date(a.date_created) between '2024-07-01' and '2025-01-31'
 
-
-where a.member_id = '1714868'    
+group by 1 
