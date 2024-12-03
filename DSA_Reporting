@@ -1,5 +1,6 @@
 select distinct
-  upper(countrycode) as country,
+  upper(countrycode) as Country,
+  'Vetting' as Source,
   case when entityType = 'JobApplicationTemplate' then 'Job Application'
        when entityType = 'ReviewResponse' then 'Review Response'
        when entityType = 'VerticalProfile' then 'Profile'
@@ -11,12 +12,13 @@ from intl.hive_event
 where name = 'CSRApproval'
   and date(datecreated) between '2024-07-01' and '2025-01-31'
   and approvalAction = 'Rejected'
-group by 1,2,3
+group by 1,2,3,4
 
 union
 
 select distinct 
-  upper(country_code) as country,
+  upper(country_code) as Country,
+  'Block List' as Source,
   'Member' as Content_Type,
   case when rule_description = 'firstName,phoneNumber,countryCode+' then 'Name, Phone Number and Country'
        when rule_description = 'lastName,phoneNumber,countryCode+' then 'Name, Phone Number and Country'
@@ -27,17 +29,20 @@ select distinct
   count(distinct blacklisted_person_id) as No_Items
 from intl.blacklist_reason 
 where date(date_created) between '2024-07-01' and '2025-01-31'
-group by 1,2,3
+group by 1,2,3,4
 
 union
 
 select distinct 
-  upper(country_code) as country,
+  upper(cd.country_code) as Country,
+  'Close Downgrade' as Source,
   'Member' as Content_Type,
-  regexp_replace(action_reason, '([a-z])([A-Z])', '\1 \2') as Violation,
-  count(distinct member_id) as No_Items
-from intl.close_downgrade_detail
-where action_performed = 'Close'
-and user_type in ('CSR', 'Backoffice')
-and date(action_date) between '2024-07-01' and '2025-01-31'
-group by 1,2,3
+  regexp_replace(cd.action_reason, '([a-z])([A-Z])', '\1 \2') as Violation,
+  count(distinct case when vt.memberid is null then cd.member_id end) as No_Items
+from intl.close_downgrade_detail  cd
+left join intl.hive_event         vt on cd.member_id = vt.memberid and cd.country_code = vt.countrycode and vt.name = 'CSRApproval' 
+                                  and vt.approvalAction = 'Rejected' 
+where cd.action_performed = 'Close'
+and cd.user_type in ('CSR', 'Backoffice')
+and date(cd.action_date) between '2024-07-01' and '2025-01-31'
+group by 1,2,3,4
