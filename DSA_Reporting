@@ -45,9 +45,9 @@ select distinct
   count(distinct case when vt.memberid is null then cd.member_id end) as No_Items
 from intl.close_downgrade_detail  cd
 left join intl.hive_event         vt on cd.member_id = vt.memberid and cd.country_code = vt.countrycode and vt.name = 'CSRApproval' 
-                                  and vt.approvalAction = 'Rejected' and vt.entitytype = 'Member' and date(vt.datecreated) >= '2024-01-01'
+                                  and vt.approvalAction = 'Rejected' and date(vt.datecreated) >= '2024-01-01'
 where cd.action_performed = 'Close'
 and cd.user_type in ('CSR', 'Backoffice')
 and date(cd.action_date) >= '2024-01-01' 
-and cd.action_reason <> 'RT_CLOSED_ACCT'
+and cd.action_reason not in ('RT_CLOSED_ACCT','AutoRenewal','ChangeOfPlans','DissatisfiedService','FoundCare','FoundElsewhere','NoneProvided','Revocation','TooManyEmails','WrongSubscription') 
 group by 1,2,3,4,5
